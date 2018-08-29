@@ -1,4 +1,6 @@
 from collections import defaultdict
+from datetime import datetime
+import json
 import uuid
 
 from django.db import models
@@ -16,10 +18,11 @@ class SuiteRun(models.Model):
     start = models.DateTimeField(auto_now_add=True)
     end = models.DateTimeField(null=True)
 
-    def run(self):
+    def run(self, *args, **kwargs):
         """Groups the test by parallelization priority and then submits them to
         celery to run.
         """
+        # TODO: this grouping is too complicated and probably unneeded
         self.save()
         groups = defaultdict(list)
         for test_run in self.testrun_set.all():
@@ -29,7 +32,7 @@ class SuiteRun(models.Model):
         tests = [group for _, group in sorted(groups.items())]
         tests += groups[None]  # those with None should be run at the end, in series
 
-        test_suite.tasks.submit_tests(tests)
+        return test_suite.tasks.submit_tests(tests, *args, **kwargs)
 
 
 class TestRun(models.Model):
@@ -40,7 +43,8 @@ class TestRun(models.Model):
     status = models.TextField(choices=(
         ('pending', 'Pending'),
         ('running', 'Running'),
-        ('finished', 'Finished')
+        ('finished', 'Finished'),
+        ('skipped', 'Skipped')
     ), default='pending')
     result = models.TextField(choices=(
         ('passed', 'Passed'),
@@ -52,19 +56,30 @@ class TestRun(models.Model):
     end = models.DateTimeField(null=True)
     resource = models.ForeignKey('Resource', on_delete=models.SET_NULL, null=True)
 
-    ### under construction
-    bearer_token = models.TextField()
-    patient_id = models.TextField()
-    version = models.TextField()
-    use_cases = models.TextField()
-    ###
+    def run(self, context):
+        test = self.test(**context)
 
-    def run(self):
-        """Just debugging for now."""
-        test = self.test(**self.__dict__)
-        if test.should_run():
-            self.message = test.run()
+        skipped, reason = test.should_skip()
+        if skipped:
+            self.status = 'skipped'
+            self.message = reason
             self.save()
+            return
+
+        self.start = datetime.now()
+        self.status = 'running'
+        self.save()
+
+        # TODO: handle warnings/failures correctly
+        message, resource = test.run()
+        self.status = 'finished'
+        self.result = 'passed'
+        self.message = message
+        resource_model = Resource(resource=json.dumps(resource))
+        resource_model.save()
+        self.resource = resource_model
+        self.end = datetime.now()
+        self.save()
 
 
 class Resource(models.Model):

@@ -4,7 +4,7 @@ MAINTAINER Andrew Bjonnes
 # Install required packages
 RUN apt-get update
 RUN apt-get install -y \
-    xvfb unzip redis-server
+    xvfb unzip
 
 #========
 # Firefox
@@ -24,8 +24,6 @@ RUN wget --no-verbose -O /tmp/firefox.tar.bz2 https://download-installer.cdn.moz
 # Clean up now that we're done
 RUN apt-get clean
 
-RUN redis-server --daemonize yes
-
 # Install the app
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
@@ -38,4 +36,4 @@ ENV FLASK_APP "/usr/src/app/app.py"
 ENV FLASK_SECRET_KEY "ssssssssssh"
 ENV SQLALCHEMY_DATABASE_URI "sqlite:///db/db.sqlite3"
 
-CMD python authorize.py
+CMD true

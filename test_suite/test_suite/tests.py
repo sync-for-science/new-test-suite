@@ -48,13 +48,15 @@ class BaseTest:
         self.instance_use_cases = set(kwargs.pop('use_cases'))
         self.base_uri = kwargs.pop('base_uri').rstrip('/')
 
-    def should_run(self, *args, **kwargs):
-        return (
-            self.instance_version in self.versions and
-            self.instance_use_cases.intersection(self.use_cases)
-        )
+    def should_skip(self, *args, **kwargs):
+        if self.instance_version not in self.versions:
+            return True, f'This test only supports version(s) {", ".join(self.versions)}'
+        if not self.instance_use_cases.intersection(self.use_cases):
+            return True, f'This test only supports use case(s) {", ".join(self.use_cases)}'
 
-    def run(self, *args, **kwargs):
+        return False, ''
+
+    def run(self):
         raise NotImplemented
 
 
@@ -81,7 +83,7 @@ class ResourceTestMixin:
         return response.json()
 
     def run(self):
-        return self.__dict__
+        return 'Test has run', self.get_resource()
 
 
 @register

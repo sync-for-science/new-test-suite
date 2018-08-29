@@ -1,18 +1,27 @@
-from functools import wraps
 from collections.abc import Sequence
 
 import celery
-
-import test_suite.models
+from celery.utils.log import get_task_logger
+from django.apps import apps
 
 
 REDIS = 'redis://localhost:6379/0'
-app = celery.Celery('tasks', broker=REDIS, backend=REDIS)
+app = celery.Celery('test_suite.tasks', broker=REDIS, backend=REDIS)
+logger = get_task_logger(__name__)
+
+
+def _model(model_name):
+    """Generically retrieve a model class from a Django app to avoid circular
+    import issues; see https://stackoverflow.com/questions/26379026/
+    """
+    return apps.get_model('test_suite', model_name)
+
 
 @app.task
-def test_runner(test_run_id):
-    test_run = test_suite.models.TestRun.objects.get(id=test_run_id)
-    test_run.run()
+def test_runner(context, test_run_id):
+    test_run = _model('TestRun').objects.get(id=test_run_id)
+    test_run.run(context)
+    return context  # to pass the config to the next task in chain
 
 
 def test_group_to_task_group(test_runs):
@@ -22,10 +31,10 @@ def test_group_to_task_group(test_runs):
     """
     if isinstance(test_runs, Sequence):
         return celery.group(
-            test_runner.si(test_run.id)
+            test_runner.s(test_run.id)
             for test_run in test_runs
         )
-    return test_runner.si(test_runs.id)
+    return test_runner.s(test_runs.id)
 
 
 def wrap(groups):
@@ -39,7 +48,7 @@ def wrap(groups):
     )
 
 
-def submit_tests(groups):
+def submit_tests(groups, context):
     """Wraps the sequence of test sequences in celery primitives and runs them."""
     runnable = wrap(groups)
-    runnable()
+    return runnable(context)
