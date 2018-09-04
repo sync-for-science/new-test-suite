@@ -18,10 +18,9 @@ def _model(model_name):
 
 
 @app.task
-def test_runner(context, test_run_id):
-    test_run = _model('TestRun').objects.get(id=test_run_id)
-    test_run.run(context)
-    return context  # to pass the config to the next task in chain
+def test_runner(test_run_id):
+    test_run = _model('FeatureRun').objects.get(id=test_run_id)
+    test_run.run()
 
 
 def test_group_to_task_group(test_runs):
@@ -31,10 +30,10 @@ def test_group_to_task_group(test_runs):
     """
     if isinstance(test_runs, Sequence):
         return celery.group(
-            test_runner.s(test_run.id)
+            test_runner.si(test_run.id)
             for test_run in test_runs
         )
-    return test_runner.s(test_runs.id)
+    return test_runner.si(test_runs.id)
 
 
 def wrap(groups):
@@ -48,7 +47,7 @@ def wrap(groups):
     )
 
 
-def submit_tests(groups, context):
+def submit_tests(groups):
     """Wraps the sequence of test sequences in celery primitives and runs them."""
     runnable = wrap(groups)
-    return runnable(context)
+    return runnable()

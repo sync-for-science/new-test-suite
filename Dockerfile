@@ -4,7 +4,7 @@ MAINTAINER Andrew Bjonnes
 # Install required packages
 RUN apt-get update
 RUN apt-get install -y \
-    xvfb unzip
+    xvfb unzip redis-server
 
 #========
 # Firefox
