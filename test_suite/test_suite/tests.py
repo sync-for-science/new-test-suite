@@ -84,7 +84,6 @@ class BaseTest:
 class ResourceTestMixin:
     """Mixin class for tests probing resources."""
     resource_type = None
-    resource_name = None
     test_group = 1
 
     def __init__(self, **kwargs):
@@ -164,20 +163,22 @@ class ResourceTestMixin:
         # TODO: implement
         self.results['All codes are valid'] = (None, PASS)
 
-    def test_argonaut_profile(self, resource):
-        """Validate the resource against an Argonaut profile."""
+    def test_profiles(self, resource):
+        """Validate the resource against any associated profile."""
         # TODO: add class attribute with a schema against which to validate
-        # for now, this is just an example of a warning result
-        self.results[f'Resources fulfill the argonaut {self.resource_name} profile'] = (
-            'Something is wrong!', WARN
-        )
+        for name, schema in self.profiles:
+            # do something with the schema here, maybe with more advanced code checking as well
+            # for now, this is just an example of a warning result
+            self.results[f'Resources fulfill the {name} profile'] = (
+                'Something is wrong!', WARN
+            )
 
     def run(self):
         resource = self.get_resource()
         self.test_valid_fhir_resource(resource)
         self.test_resolvable_references(resource)
         self.test_valid_codes(resource)
-        self.test_argonaut_profile(resource)
+        self.test_profiles(resource)
 
 
 @register
@@ -185,3 +186,4 @@ class PatientDemographicsTest(ResourceTestMixin, BaseTest):
     slug = 'patient-demographics'
     resource_type = 'Patient/{patient_id}'
     use_cases = ('EHR', 'Financial')
+    profiles = (('Argonaut patient', {}), ('CMS patient', {}))

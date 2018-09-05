@@ -53,6 +53,7 @@ class FeatureRun(models.Model):
     ), null=True)
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
+    message = models.TextField()
 
     ### context values
     base_uri = models.TextField()
