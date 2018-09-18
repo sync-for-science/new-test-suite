@@ -50,4 +50,4 @@ def wrap(groups):
 def submit_tests(groups):
     """Wraps the sequence of test sequences in celery primitives and runs them."""
     runnable = wrap(groups)
-    return runnable()
+    return runnable.apply_async()
