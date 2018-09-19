@@ -5,6 +5,7 @@ certifi==2018.8.24
 chardet==3.0.4
 Django==2.1
 idna==2.7
+jsonschema==2.6.0
 kombu==4.2.1
 pytz==2018.5
 redis==2.10.6

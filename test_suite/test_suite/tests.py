@@ -3,9 +3,11 @@ import json
 from urllib import parse
 
 from django.db import models
+import jsonschema
 import requests
 
 from test_suite.browser import Browser
+from test_suite import schemas
 
 
 FAIL = 'failed'
@@ -170,11 +172,16 @@ class ResourceTestMixin:
         """Validate the resource against any associated profile."""
         # TODO: add class attribute with a schema against which to validate
         for name, schema in self.profiles:
-            # do something with the schema here, maybe with more advanced code checking as well
-            # for now, this is just an example of a warning result
-            self.results[f'Resources fulfill the {name} profile'] = (
-                'Something is wrong!', WARN
+            validator = jsonschema.Draft4Validator(schema)
+            errors = '; '.join(
+                error.message
+                for error in validator.iter_errors(resource)
             )
+            if not errors:
+                result = (None, PASS)
+            else:
+                result = (errors, WARN)
+            self.results[f'Resources fulfill the {name} profile'] = result
 
     def run(self):
         resource = self.get_resource()
@@ -198,7 +205,7 @@ class PatientDemographicsTest(ResourceTestMixin, BaseTest):
     slug = 'patient-demographics'
     resource_type = 'Patient/{patient_id}'
     use_cases = ('EHR', 'Financial')
-    profiles = (('Argonaut patient', {}), ('CMS patient', {}))
+    profiles = (('Argonaut patient', schemas.patient_argonaut), ('CMS patient', schemas.patient_cms))
 
 
 @register
