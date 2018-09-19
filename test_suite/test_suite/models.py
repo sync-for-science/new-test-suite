@@ -54,6 +54,7 @@ class FeatureRun(models.Model):
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
     message = models.TextField()
+    http_messages = models.TextField()
 
     ### context values
     base_uri = models.TextField()
@@ -127,6 +128,8 @@ Array.from(document.querySelectorAll('button[data-slide=next]'))[1].click();
                 sequence=idx
             )
             model.save()
+
+        self.http_messages = test.requester.to_json()
 
         if passing:
             self.result = 'passed'

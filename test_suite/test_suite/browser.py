@@ -1,3 +1,5 @@
+from collections import OrderedDict
+import json
 from time import sleep
 from urllib import parse
 from uuid import uuid4
@@ -69,4 +71,46 @@ class Browser:
         }
 
 
+class Requester:
+    def __init__(self):
+        self._messages = list()
 
+    def get(self, *args, **kwargs):
+        return self._request(requests.get, *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._request(requests.post, *args, **kwargs)
+
+    def _request(self, func, *args, **kwargs):
+        response = func(*args, **kwargs)
+        self._messages.append(request_to_dict(response.request))
+        self._messages.append(response_to_dict(response))
+
+        return response
+
+    def to_json(self):
+        return json.dumps(self._messages)
+
+
+def request_to_dict(request):
+    # request.body is str when `data` is used and bytes when `json` is used :(
+    body = request.body
+    if body and isinstance(body, bytes):
+        body = body.decode('utf-8')
+
+    return {
+        'type': 'request',
+        'method': request.method,
+        'url': request.url,
+        'headers': dict(request.headers),
+        'body': body
+    }
+
+
+def response_to_dict(response):
+    return {
+        'type': 'response',
+        'status': response.status_code,
+        'headers': dict(response.headers),
+        'body': response.text
+    }

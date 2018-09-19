@@ -6,7 +6,7 @@ from django.db import models
 import jsonschema
 import requests
 
-from test_suite.browser import Browser
+from test_suite.browser import Browser, Requester
 from test_suite import schemas
 
 
@@ -63,11 +63,13 @@ class BaseTest:
         self.resources = OrderedDict()
         self.results = OrderedDict()
 
+        self.requester = Requester()
+
     def fetch_fhir_resource(self, path, headers=None):
         if not headers:
             headers = dict()
         uri = f'{self.base_uri}/{path}'
-        response = requests.get(uri, headers=headers)
+        response = self.requester.get(uri, headers=headers)
         response.raise_for_status()
 
         data = response.json()
@@ -109,7 +111,7 @@ class ResourceTestMixin:
         # TODO: use the reference stack's server
         uri = f'http://hapi.fhir.org/baseDstu{self.instance_version[-1]}/{resource["resourceType"]}/$validate'
         try:
-            response = requests.post(uri, json=resource, headers={'Accept': 'application/json'})
+            response = self.requester.post(uri, json=resource, headers={'Accept': 'application/json'})
             if 500 <= response.status_code < 600:
                 raise Exception
         except:
@@ -199,6 +201,51 @@ class BehaviorTestMixin:
         self._browser = Browser(self.auth_config)
         super().__init__(**kwargs)
 
+    def exchange(self, params, method=None):
+        if method is None:
+            method = self.requester.post
+
+        auth = (
+            self.auth_config['client_id'],
+            self.auth_config['client_secret']
+        )
+        response = method(
+            self.auth_config['token_uri'],
+            auth=auth,
+            data=params
+        )
+        return response
+
+    def assert_exchange_failure(self, params, exchange_twice=False, **overrides):
+        method = overrides.pop('method', self.requester.post)
+        params = apply_overrides(params, overrides)
+
+        response = self.exchange(params, method)
+        if exchange_twice:
+            response = self.exchange(params, method)
+
+        if response.status_code == 200:
+            return ('Response code should not be 200', FAIL)
+        else:
+            return (None, PASS)
+
+    def assert_exchange_success(self, params, **overrides):
+        params = apply_overrides(params, overrides)
+        response = self.exchange(params)
+        errors = list()
+        if response.status_code != 200:
+            errors.append('Status code should be 200')
+        else:
+            errors.extend(
+                f'JSON response should contain `{key}`'
+                for key in ('access_token', 'token_type', 'scope', 'patient')
+                if key not in response.json()
+            )
+        if errors:
+            return ('; '.join(errors), FAIL)
+        else:
+            return (None, PASS)
+
 
 @register
 class PatientDemographicsTest(ResourceTestMixin, BaseTest):
@@ -212,7 +259,14 @@ class PatientDemographicsTest(ResourceTestMixin, BaseTest):
 class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
     slug = 'ask-for-authorization'
 
-    def scenario_result(self, params, want_pass):
+    def assert_failure(self, *args, **kwargs):
+        return self.result(False, *args, **kwargs)
+
+    def assert_success(self, *args, **kwargs):
+        return self.result(True, *args, **kwargs)
+
+    def result(self, want_pass, params, **overrides):
+        params = apply_overrides(params, overrides)
         b = Browser(self.auth_config)
         uri = b.init_authorization(params)
         success = b.run_authorization_steps(raise_error=False)
@@ -226,7 +280,7 @@ class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
         return (None, PASS)
     
     def run(self):
-        default_params = {
+        params = {
             'response_type': 'code',
             'client_id': self.auth_config['client_id'],
             'redirect_uri': self.auth_config['redirect_uri'],
@@ -235,45 +289,53 @@ class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
             'aud': self.auth_config['aud']
         }
 
-        params = dict(default_params)
-        del params['response_type']
-        self.results['Missing `response_type` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        params['response_type'] = 'token'
-        self.results['Wrong `response_type` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        del params['client_id']
-        self.results['Missing `client_id` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        params['client_id'] = 'example'
-        self.results['Wrong `client_id` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        del params['redirect_uri']
-        self.results['Missing `redirect_uri` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        params['redirect_uri'] = 'https://example.com'
-        self.results['Wrong `redirect_uri` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        del params['scope']
-        self.results['Missing `scope` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        del params['state']
-        self.results['Missing `state` parameter'] = self.scenario_result(params, False)
-
-        params = dict(default_params)
-        params['state'] = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla mollis libero interdum mi eleifend mollis. Phasellus velit lectus, feugiat eu turpis a, efficitur auctor leo. Praesent sed bibendum nisi, vel mollis dui. Nulla volutpat tortor in erat laoreet sodales. Nunc ex dolor, vehicula eget convallis non, volutpat a odio. Aenean nec rutrum nibh. Suspendisse fermentum sem a enim aliquet, non rhoncus dui faucibus.'
-        self.results['Long state is accepted'] = self.scenario_result(params, True)
-
-        params = dict(default_params)
-        params['state'] = r'`%2B~!@#$%^&*()-_=+[{]}\;:\'",<.>/?'
-        self.results['State with special characters is accepted'] = self.scenario_result(params, True)
+        self.results['Missing `response_type` parameter'] = self.assert_failure(
+            params,
+            response_type=None
+        )
+        self.results['Wrong `response_type` parameter'] = self.assert_failure(
+            params,
+            response_type='token'
+        )
+        self.results['Missing `client_id` parameter'] = self.assert_failure(
+            params,
+            client_id=None
+        )
+        self.results['Wrong `client_id` parameter'] = self.assert_failure(
+            params,
+            client_id='example'
+        )
+        self.results['Missing `redirect_uri` parameter'] = self.assert_failure(
+            params,
+            redirect_uri=None
+        )
+        self.results['Wrong `redirect_uri` parameter'] = self.assert_failure(
+            params,
+            redirect_uri='https://example.com'
+        )
+        self.results['Missing `scope` parameter'] = self.assert_failure(
+            params,
+            scope=None
+        )
+        self.results['Missing `state` parameter'] = self.assert_failure(
+            params,
+            state=None
+        )
+        self.results['Long stater is accepted'] = self.assert_success(
+            params,
+            state='Lorem ipsum dolor sit amet, consectetur adipiscing elit. '
+                'Nulla mollis libero interdum mi eleifend mollis. Phasellus '
+                'velit lectus, feugiat eu turpis a, efficitur auctor leo. '
+                'Praesent sed bibendum nisi, vel mollis dui. Nulla volutpat '
+                'tortor in erat laoreet sodales. Nunc ex dolor, vehicula eget '
+                'convallis non, volutpat a odio. Aenean nec rutrum nibh. '
+                'Suspendisse fermentum sem a enim aliquet, non rhoncus dui '
+                'faucibus.'
+        )
+        self.results['State with special characters is accepted'] = self.assert_success(
+            params,
+            state=r'`%2B~!@#$%^&*()-_=+[{]}\;:\'",<.>/?'
+        )
 
 
 @register
@@ -285,62 +347,53 @@ class ExchangeCodeForTokenTest(BehaviorTestMixin, BaseTest):
         return b.authorize(self.state)
 
     def run(self):
-        default_params = {
+        params = {
             'grant_type': 'authorization_code',
             'redirect_uri': self.auth_config['redirect_uri'],
         }
 
-        params = dict(default_params, code=self.get_code())
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        errors = list()
-        if response.status_code != 200:
-            errors.append('Status code should be 200')
-        else:
-            errors.extend(
-                f'JSON response should contain `{key}`'
-                for key in ('access_token', 'token_type', 'scope', 'patient')
-                if key not in response.json()
-            )
-        if errors:
-            result = ('; '.join(errors), FAIL)
-        else:
-            result = (None, PASS)
-        self.results['Success response has all required parameters'] = result
-
-        params = dict(default_params, code=self.get_code())
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params, method=requests.get)
-        self.results['We cannot use a "GET" request to retrieve an access token'] = status_code_should_fail(response)
-
-        params = dict(default_params, code=self.get_code())
-        del params['grant_type']
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Missing `grant_type` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params)
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Missing `code` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params, code=self.get_code())
-        del params['redirect_uri']
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Missing `redirect_uri` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params, code=self.get_code(), grant_type='Hugh')
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Wrong `grant_type` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params, code='WURVFXGJYTHEIZXSQXOBGSVRUDOOJXATBKT')
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Wrong `code` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params, code=self.get_code(), redirect_uri='https://example.com')
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Wrong `redirect_uri` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params, code=self.get_code())
-        exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Use received code twice'] = status_code_should_fail(response)
+        self.results['Success response has all required parameters'] = self.assert_exchange_success(
+            params,
+            code=self.get_code()
+        )
+        self.results['We cannot use a "GET" request to retrieve an access token'] = self.assert_exchange_failure(
+            params,
+            code=self.get_code(),
+            method=self.requester.get
+        )
+        self.results['Missing `grant_type` parameter'] = self.assert_exchange_failure(
+            params,
+            code=self.get_code(),
+            grant_type=None
+        )
+        self.results['Wrong `grant_type` parameter'] = self.assert_exchange_failure(
+            params,
+            code=self.get_code(),
+            grant_type='Hugh'
+        )
+        self.results['Missing `code` parameter'] = self.assert_exchange_failure(
+            params,
+            code=None
+        )
+        self.results['Wrong `code` parameter'] = self.assert_exchange_failure(
+            params,
+            code='WURVFXGJYTHEIZXSQXOBGSVRUDOOJXATBKT'
+        )
+        self.results['Missing `redirect_uri` parameter'] = self.assert_exchange_failure(
+            params,
+            code=self.get_code(),
+            redirect_uri=None
+        )
+        self.results['Wrong `redirect_uri` parameter'] = self.assert_exchange_failure(
+            params,
+            code=self.get_code(),
+            redirect_uri='https://example.com'
+        )
+        self.results['Use received code twice'] = self.assert_exchange_failure(
+            params,
+            code=self.get_code(),
+            exchange_twice=True
+        )
 
 
 @register
@@ -356,7 +409,7 @@ class RefreshTokenTest(BehaviorTestMixin, BaseTest):
             'code': code,
             'redirect_uri': self.auth_config['redirect_uri']
         }
-        token = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params).json()
+        token = self.exchange(params).json()
         
         self._refresh_token = token.get('refresh_token')
         self._tmp = token
@@ -372,50 +425,29 @@ class RefreshTokenTest(BehaviorTestMixin, BaseTest):
         return skipped, reason
 
     def run(self):
-        default_params = {
+        params = {
             'grant_type': 'refresh_token',
             'refresh_token': self._refresh_token
         }
 
-        params = dict(default_params)
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        errors = list()
-        if response.status_code != 200:
-            errors.append('Status code should be 200')
+        self.results['Success response has all required parameters'] = self.assert_exchange_success(
+            params
+        )
+        self.results['Missing `grant_type` parameter'] = self.assert_exchange_failure(
+            params,
+            grant_type=None
+        )
+        self.results['Missing `refresh_token` parameter'] = self.assert_exchange_failure(
+            params,
+            refresh_token=None
+        )
+
+
+def apply_overrides(params, overrides):
+    params = dict(params)  # copy
+    for k, v in overrides.items():
+        if v is None and k in params:
+            del params[k]
         else:
-            token = response.json()
-            errors.extend(
-                f'JSON response should contain `{key}`'
-                for key in ('access_token', 'token_type', 'scope', 'patient')
-                if key not in token
-            )
-            self._refresh_token = token.get('refresh_token')
-        if errors:
-            result = ('; '.join(errors), FAIL)
-        else:
-            result = (None, PASS)
-
-        self.results['Success response has all required parameters'] = result
-
-        params = dict(default_params)
-        del params['grant_type']
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Missing `grant_type` parameter'] = status_code_should_fail(response)
-
-        params = dict(default_params)
-        del params['refresh_token']
-        response = exchange(self.auth_config['token_uri'], self.auth_config['client_id'], self.auth_config['client_secret'], params)
-        self.results['Missing `refresh_token` parameter'] = status_code_should_fail(response)
-
-
-def exchange(uri, client_id, client_secret, params, method=requests.post):
-    auth = (client_id, client_secret)
-    response = method(uri, auth=auth, data=params)
-    return response
-
-
-def status_code_should_fail(response):
-    if response.status_code == 200:
-        return ('Response code should not be 200', FAIL)
-    else:
-        return (None, PASS)
+            params[k] = v
+    return params
