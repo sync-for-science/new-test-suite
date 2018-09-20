@@ -6,7 +6,7 @@ import uuid
 from django.db import models
 
 import test_suite.tasks
-from test_suite.tests import TestField, PASS, WARN, FAIL, SKIP
+from test_suite.tests.core import TestField, FAIL, PASS, SKIP, WARN
 
 
 class SuiteRun(models.Model):
@@ -25,12 +25,16 @@ class SuiteRun(models.Model):
         """
         # TODO: this grouping is too complicated and probably unneeded
         self.save()
-        groups = defaultdict(list)
+        parallel_groups = defaultdict(list)
+        after_group = list()
         for feature_run in self.featurerun_set.all():
-            groups[feature_run.test.test_group].append(feature_run)
+            if feature_run.test.test_group is None:
+                after_group.append(feature_run)
+            else:
+                parallel_groups[feature_run.test.test_group].append(feature_run)
 
-        tests = [group for key, group in sorted(groups.items()) if key is not None]
-        tests += groups[None]  # those with None should be run at the end, in series
+        tests = [group for key, group in sorted(parallel_groups.items()) if key is not None]
+        tests += after_group  # those with None should be run at the end, in series
 
         return test_suite.tasks.submit_tests(tests, *args, **kwargs)
 
@@ -71,14 +75,12 @@ class FeatureRun(models.Model):
             use_cases=self.use_cases.split('|'),
             bearer_token=self.bearer_token,
             patient_id=self.patient_id,
+            base_fhir_uri='https://portal.demo.syncfor.science/api/fhir/',
             auth_config={
-                'authorize_uri': 'https://portal.demo.syncfor.science/oauth/authorize',
                 'redirect_uri': 'https://not-a-real-site/authorized',
                 'client_id': '890870a1-c021-4a2a-8df4-1e7113a8f5e0',
                 'client_secret': '703e05fd-fec1-4b81-a699-cbb988f3c647',
                 'scope': 'launch/patient patient/*.read offline_access',
-                'aud': 'https://portal.demo.syncfor.science/api/fhir/',
-                'token_uri': 'https://portal.demo.syncfor.science/oauth/token',
                 'authorization_steps': [
                     ('click', '#sign-in', None),
                     ('click', '[data-patient-id=smart-1288992]', None),
@@ -99,6 +101,7 @@ Array.from(document.querySelectorAll('button[data-slide=next]'))[1].click();
         if skipped:
             self.status = 'skipped'
             self.message = reason
+            self.http_messages = test.requester.to_json()
             self.save()
             return
 

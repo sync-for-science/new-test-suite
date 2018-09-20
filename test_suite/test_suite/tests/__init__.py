@@ -1,0 +1,23 @@
+from test_suite.tests.behavior_tests import (
+    AskForAuthorizationTest,
+    ExchangeCodeForTokenTest,
+    RefreshTokenTest
+)
+from test_suite.tests.resource_tests import (
+    AllergiesAndIntoleranceTest,
+    ConditionTest,
+    CoverageTest,
+    DocumentReferenceTest,
+    ExplanationOfBenefitTest,
+    ImmunizationsTest,
+    LabResultsTest,
+    MedicationAdministrationTest,
+    MedicationDispenseTest,
+    MedicationOrderTest,
+    MedicationRequestTest,
+    MedicationStatementTest,
+    PatientDemographicsTest,
+    ProcedureTest,
+    SmokingStatusTest,
+    VitalSignsTest
+)
