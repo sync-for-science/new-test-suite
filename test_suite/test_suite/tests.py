@@ -70,7 +70,8 @@ class BaseTest:
             headers = dict()
         uri = f'{self.base_uri}/{path}'
         response = self.requester.get(uri, headers=headers)
-        response.raise_for_status()
+        if response.status_code != 200:
+            return None
 
         data = response.json()
         self.resources[path] = data
@@ -98,6 +99,18 @@ class ResourceTestMixin:
         self.patient_id = kwargs.pop('patient_id')
         super().__init__(**kwargs)
 
+        self.resource = self.get_resource()
+
+    def should_skip(self):
+        skipped, reason = super().should_skip()
+
+        if not skipped:
+            if not self.resource:
+                skipped = True
+                reason = 'The resource could not be fetched'
+
+        return skipped, reason
+
     def get_resource(self):
         if not self.resource_type:
             raise ValueError
@@ -106,12 +119,12 @@ class ResourceTestMixin:
         resource_path = self.resource_type.format(patient_id=self.patient_id)
         return self.fetch_fhir_resource(resource_path, headers)
 
-    def test_valid_fhir_resource(self, resource):
+    def test_valid_fhir_resource(self):
         """Validate the resource with a HAPI FHIR server."""
         # TODO: use the reference stack's server
-        uri = f'http://hapi.fhir.org/baseDstu{self.instance_version[-1]}/{resource["resourceType"]}/$validate'
+        uri = f'http://hapi.fhir.org/baseDstu{self.instance_version[-1]}/{self.resource["resourceType"]}/$validate'
         try:
-            response = self.requester.post(uri, json=resource, headers={'Accept': 'application/json'})
+            response = self.requester.post(uri, json=self.resource, headers={'Accept': 'application/json'})
             if 500 <= response.status_code < 600:
                 raise Exception
         except:
@@ -134,17 +147,17 @@ class ResourceTestMixin:
 
         self.results[f'Resource is valid {self.instance_version} content'] = (message, result)
 
-    def test_resolvable_references(self, resource):
+    def test_resolvable_references(self):
         """Validate all the references in the resource."""
         failed_references = list()
 
         # TODO: replace with recursive reference finding
-        reference = resource.get('reference')
+        reference = self.resource.get('reference')
         if reference:
             if reference.startswith('#'):
                 matches = [
                     contained
-                    for contained in resource.get('contained', list())
+                    for contained in self.resource.get('contained', list())
                     if contained['id'] == reference[1:]
                 ]
                 if not matches:
@@ -165,19 +178,19 @@ class ResourceTestMixin:
 
         self.results['All references resolve'] = (message, result)
 
-    def test_valid_codes(self, resource):
+    def test_valid_codes(self):
         """Validate any codes in recognized systems."""
         # TODO: implement
         self.results['All codes are valid'] = (None, PASS)
 
-    def test_profiles(self, resource):
+    def test_profiles(self):
         """Validate the resource against any associated profile."""
         # TODO: add class attribute with a schema against which to validate
         for name, schema in self.profiles:
             validator = jsonschema.Draft4Validator(schema)
             errors = '; '.join(
                 error.message
-                for error in validator.iter_errors(resource)
+                for error in validator.iter_errors(self.resource)
             )
             if not errors:
                 result = (None, PASS)
@@ -186,11 +199,10 @@ class ResourceTestMixin:
             self.results[f'Resources fulfill the {name} profile'] = result
 
     def run(self):
-        resource = self.get_resource()
-        self.test_valid_fhir_resource(resource)
-        self.test_resolvable_references(resource)
-        self.test_valid_codes(resource)
-        self.test_profiles(resource)
+        self.test_valid_fhir_resource()
+        self.test_resolvable_references()
+        self.test_valid_codes()
+        self.test_profiles()
 
 
 class BehaviorTestMixin:
@@ -198,7 +210,7 @@ class BehaviorTestMixin:
         self.auth_config = kwargs.pop('auth_config')
         self.state = kwargs.pop('state')
 
-        self._browser = Browser(self.auth_config)
+        self.browser = Browser(self.auth_config)
         super().__init__(**kwargs)
 
     def exchange(self, params, method=None):
@@ -253,6 +265,16 @@ class PatientDemographicsTest(ResourceTestMixin, BaseTest):
     resource_type = 'Patient/{patient_id}'
     use_cases = ('EHR', 'Financial')
     profiles = (('Argonaut patient', schemas.patient_argonaut), ('CMS patient', schemas.patient_cms))
+
+    def run(self):
+        super().run()
+        
+        # check patient ID matches
+        if self.resource['id'] != self.patient_id:
+            result = ('Returned and queried patient IDs do not match', FAIL)
+        else:
+            result = (None, PASS)
+        self.results['Returned patient ID matches queried patient ID'] = result
 
 
 @register
@@ -321,7 +343,7 @@ class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
             params,
             state=None
         )
-        self.results['Long stater is accepted'] = self.assert_success(
+        self.results['Long `state` parameter'] = self.assert_success(
             params,
             state='Lorem ipsum dolor sit amet, consectetur adipiscing elit. '
                 'Nulla mollis libero interdum mi eleifend mollis. Phasellus '
@@ -332,7 +354,7 @@ class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
                 'Suspendisse fermentum sem a enim aliquet, non rhoncus dui '
                 'faucibus.'
         )
-        self.results['State with special characters is accepted'] = self.assert_success(
+        self.results['Special characters in `state` parameter'] = self.assert_success(
             params,
             state=r'`%2B~!@#$%^&*()-_=+[{]}\;:\'",<.>/?'
         )
@@ -411,23 +433,22 @@ class RefreshTokenTest(BehaviorTestMixin, BaseTest):
         }
         token = self.exchange(params).json()
         
-        self._refresh_token = token.get('refresh_token')
-        self._tmp = token
+        self.refresh_token = token.get('refresh_token')
 
     def should_skip(self):
         skipped, reason = super().should_skip()
 
         if not skipped:
-            if not self._refresh_token:
+            if not self.refresh_token:
                 skipped = True
-                reason = 'No refresh token was supplied\n' + json.dumps(self._tmp)
+                reason = 'No refresh token was supplied'
 
         return skipped, reason
 
     def run(self):
         params = {
             'grant_type': 'refresh_token',
-            'refresh_token': self._refresh_token
+            'refresh_token': self.refresh_token
         }
 
         self.results['Success response has all required parameters'] = self.assert_exchange_success(
