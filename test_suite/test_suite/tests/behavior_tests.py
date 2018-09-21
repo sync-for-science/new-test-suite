@@ -72,6 +72,7 @@ class BehaviorTestMixin:
 @register
 class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
     slug = 'ask-for-authorization'
+    use_cases = ('Security',)
 
     def assert_failure(self, *args, **kwargs):
         return self.result(False, *args, **kwargs)
@@ -155,6 +156,7 @@ class AskForAuthorizationTest(BehaviorTestMixin, BaseTest):
 @register
 class ExchangeCodeForTokenTest(BehaviorTestMixin, BaseTest):
     slug = 'exchange-code-for-token'
+    use_cases = ('Security',)
 
     def get_code(self):
         b = Browser(self.auth_config)
@@ -213,6 +215,7 @@ class ExchangeCodeForTokenTest(BehaviorTestMixin, BaseTest):
 @register
 class RefreshTokenTest(BehaviorTestMixin, BaseTest):
     slug = 'refresh-token'
+    use_cases = ('Security',)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -250,6 +250,29 @@ class SmokingStatusTest(ResourceTestMixin, BaseTest):
     resource_type = 'Observation?code=http://loinc.org%7C72166-2&patient={patient_id}'
     use_cases = ('EHR',)
 
+    def should_skip(self):
+        skipped, reason = super().should_skip()
+
+        self.used_fallback = False
+
+        if skipped and reason == 'The resource could not be fetched':
+            self.resource_type = 'Observation?category=social-history&patient={patient_id}'
+            self.resource = self.get_resource()
+            if self.resource:
+                self.used_fallback = True
+                return (False, '')
+
+        return skipped, reason
+
+    def run(self):
+        super().run()
+
+        if self.used_fallback:
+            result = ('The server should support fetching smoking status using a LOINC code', FAIL)
+        else:
+            result = (None, PASS)
+        self.results['The correct URI was used'] = result
+
 
 @register
 class VitalSignsTest(ResourceTestMixin, BaseTest):
