@@ -62,17 +62,33 @@ class BaseTest:
 
         self.requester = Requester()
 
+        response = self.requester.get(f'{self.base_fhir_uri}metadata')
+        if response.status_code == 200:
+            self.conformance = response.json()
+        else:
+            self.conformance = None
+
     def fetch_fhir_resource(self, path, headers=None):
         if not headers:
             headers = dict()
         uri = f'{self.base_uri}/{path}'
         response = self.requester.get(uri, headers=headers)
         if response.status_code != 200:
-            return None
+            return None, None
 
-        data = response.json()
-        self.resources[path] = data
-        return data
+        resource = response.json()
+        self.resources[path] = resource
+
+        if resource['resourceType'] == 'Bundle':
+            entries = resource.get('entry', list())
+            if entries:
+                single_resource = entries[0]['resource']
+            else:
+                single_resource = None
+        else:
+            single_resource = resource
+
+        return single_resource, resource
 
     def should_skip(self, *args, **kwargs):
         if self.instance_version not in self.versions:
@@ -80,10 +96,8 @@ class BaseTest:
         if not self.instance_use_cases.intersection(self.use_cases):
             return True, f'This test only supports use case(s) {", ".join(self.use_cases)}'
 
-        response = self.requester.get(f'{self.base_fhir_uri}metadata')
-        if response.status_code != 200:
+        if not self.conformance:
             return True, "The server's conformance statement could not be retrieved"
-        self.conformance = response.json()
 
         return False, ''
 

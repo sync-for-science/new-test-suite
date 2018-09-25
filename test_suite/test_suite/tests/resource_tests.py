@@ -33,7 +33,7 @@ class ResourceTestMixin:
         if resource_type not in supported_resource_types:
             return (True, 'This resource type is not supported by the server')
 
-        self.resource = self.get_resource()
+        self.resource, self.bundled_resource = self.get_resource()
         if not self.resource:
             return (True, 'The resource could not be fetched')
 
@@ -50,9 +50,9 @@ class ResourceTestMixin:
     def test_valid_fhir_resource(self):
         """Validate the resource with a HAPI FHIR server."""
         # TODO: use the reference stack's server
-        uri = f'http://hapi.fhir.org/baseDstu{self.instance_version[-1]}/{self.resource["resourceType"]}/$validate'
+        uri = f'http://hapi.fhir.org/baseDstu{self.instance_version[-1]}/{self.bundled_resource["resourceType"]}/$validate'
         try:
-            response = self.requester.post(uri, json=self.resource, headers={'Accept': 'application/json'})
+            response = self.requester.post(uri, json=self.bundled_resource, headers={'Accept': 'application/json'})
             if 500 <= response.status_code < 600:
                 raise Exception
         except:
@@ -156,6 +156,7 @@ class AllergiesAndIntoleranceTest(ResourceTestMixin, BaseTest):
     slug = 'allergies-and-intolerance'
     resource_type = 'AllergyIntolerance?patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut allergies', schemas.allergies_argonaut),)
 
 
 @register
@@ -179,6 +180,7 @@ class ImmunizationsTest(ResourceTestMixin, BaseTest):
     slug = 'immunizations'
     resource_type = 'Immunizations?patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut immunizations', schemas.immunization_argonaut),)
 
 
 @register
@@ -186,6 +188,7 @@ class LabResultsTest(ResourceTestMixin, BaseTest):
     slug = 'lab-results'
     resource_type = 'Observation?category=laboratory&patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut lab results', schemas.lab_results_argonaut),)
 
 
 @register
@@ -206,14 +209,18 @@ class MedicationDispenseTest(ResourceTestMixin, BaseTest):
 class MedicationOrderTest(ResourceTestMixin, BaseTest):
     slug = 'medication-order'
     resource_type = 'MedicationOrder?patient={patient_id}'
+    version = ('DSTU2',)
     use_cases = ('EHR',)
+    profiles = (('Argonaut medication orders', schemas.medication_order_argonaut),)
 
 
 @register
 class MedicationRequestTest(ResourceTestMixin, BaseTest):
     slug = 'medication-request'
     resource_type = 'MedicationRequest?patient={patient_id}'
+    version = ('STU3',)
     use_cases = ('EHR',)
+    profiles = (('Argonaut medication requests', schemas.medication_request_argonaut),)
 
 
 @register
@@ -221,6 +228,7 @@ class MedicationStatementTest(ResourceTestMixin, BaseTest):
     slug = 'medication-statement'
     resource_type = 'MedicationStatement?patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut medication statements', schemas.medication_statement_argonaut),)
 
 
 @register
@@ -228,6 +236,7 @@ class DocumentReferenceTest(ResourceTestMixin, BaseTest):
     slug = 'document-reference'
     resource_type = 'DocumentReference?patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut patient documents', schemas.patient_documents_argonaut),)
 
 
 @register
@@ -235,13 +244,15 @@ class ConditionTest(ResourceTestMixin, BaseTest):
     slug = 'condition'
     resource_type = 'Condition?patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut problems', schemas.problems_argonaut),)
 
 
 @register
 class ProcedureTest(ResourceTestMixin, BaseTest):
-    slug = 'prodedure'
+    slug = 'procedure'
     resource_type = 'Procedure?patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut procedures', schemas.procedures_argonaut),)
 
 
 @register
@@ -249,6 +260,7 @@ class SmokingStatusTest(ResourceTestMixin, BaseTest):
     slug = 'smoking-status'
     resource_type = 'Observation?code=http://loinc.org%7C72166-2&patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut smoking status', schemas.smoking_status_argonaut),)
 
     def should_skip(self):
         skipped, reason = super().should_skip()
@@ -257,7 +269,7 @@ class SmokingStatusTest(ResourceTestMixin, BaseTest):
 
         if skipped and reason == 'The resource could not be fetched':
             self.resource_type = 'Observation?category=social-history&patient={patient_id}'
-            self.resource = self.get_resource()
+            self.resource, self.bundled_resource = self.get_resource()
             if self.resource:
                 self.used_fallback = True
                 return (False, '')
@@ -279,3 +291,4 @@ class VitalSignsTest(ResourceTestMixin, BaseTest):
     slug = 'vital-signs'
     resource_type = 'Observation?category=vital-signs&patient={patient_id}'
     use_cases = ('EHR',)
+    profiles = (('Argonaut vital signs', schemas.vital_signs_argonaut),)

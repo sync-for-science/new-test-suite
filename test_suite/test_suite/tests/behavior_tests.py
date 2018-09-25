@@ -7,6 +7,8 @@ class BehaviorTestMixin:
         self.auth_config = kwargs.pop('auth_config')
         self.state = kwargs.pop('state')
 
+        super().__init__(**kwargs)
+
         # TODO: move this somewhere else and make it more robust
         try:
             conformance_uris = {
@@ -21,7 +23,6 @@ class BehaviorTestMixin:
         self.auth_config['token_uri'] = conformance_uris['token']
 
         self.browser = Browser(self.auth_config)
-        super().__init__(**kwargs)
 
     def exchange(self, params, method=None):
         if method is None:

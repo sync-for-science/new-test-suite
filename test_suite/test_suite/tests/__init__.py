@@ -21,7 +21,6 @@ from test_suite.tests.resource_tests import (
     SmokingStatusTest,
     VitalSignsTest
 )
-from test_suite.tests.other_tests import(
-    S4STestDSTU2,
-    S4STestSTU3
+from test_suite.tests.other_tests import (
+    S4STest
 )

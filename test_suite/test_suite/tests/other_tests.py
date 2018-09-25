@@ -3,12 +3,10 @@ from urllib.parse import urlparse
 from test_suite.tests.core import BaseTest, FAIL, PASS, SKIP, WARN, register
 
 
-class S4STestBase(BaseTest):
+@register
+class S4STest(BaseTest):
+    slug = 's4s'
     use_cases = ('EHR',)
-
-    # override these
-    slug = ''
-    medication_resources = ()
 
     def run(self):
         supported_resource_types = {
@@ -35,13 +33,21 @@ class S4STestBase(BaseTest):
                 result = (f'The server must support the {resource_type} resource type', FAIL)
             self.results[f'Server implements {label}'] = result
 
+        medication_resources = [
+            'MedicationOrder',
+            'MedicationRequest',
+            'MedicationStatement',
+            'MedicationDispense',
+            'MedicationAdministration'
+        ]
+
         if any(
                 medication_resource_type in supported_resource_types
-                for medication_resource_type in self.medication_resources
+                for medication_resource_type in medication_resources
         ):
             result = (None, PASS)
         else:
-            result = (f'The server must support at least one of {", ".join(self.medication_resources)}', FAIL)
+            result = (f'The server must support at least one of {", ".join(medication_resources)}', FAIL)
         self.results['Server implements Medications'] = result
 
 
@@ -74,17 +80,3 @@ class S4STestBase(BaseTest):
             result1 = result2 = ('The conformance statement does not provide a `security` extension', FAIL)
         self.results['Conformance statement specifies the authorize and token endpoints'] = result1
         self.results['Conformance statement OAuth endpoints are valid'] = result2
-
-
-@register
-class S4STestDSTU2(S4STestBase):
-    slug = 's4s-dstu2'
-    versions = ('DSTU2',)
-    medication_resources = ('MedicationOrder', 'MedicationStatement', 'MedicationDispense', 'MedicationAdministration')
-
-
-@register
-class S4STestSTU3(S4STestBase):
-    slug = 's4s-stu3'
-    versions = ('STU3',)
-    medication_resources = ('MedicationRequest', 'MedicationStatement', 'MedicationDispense', 'MedicationAdministration')
