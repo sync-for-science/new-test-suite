@@ -5,6 +5,7 @@ import jsonschema
 import requests
 
 from test_suite import schemas
+from test_suite.schema_validator import get_s4s_validator
 from test_suite.tests.core import BaseTest, FAIL, PASS, SKIP, WARN, register
 
 
@@ -93,7 +94,7 @@ class ResourceTestMixin:
             else:
                 uri = f'{self.base_uri}/{reference}'
                 try:
-                    response = self.get_fetch_fhir_resource(uri, {'Authorization': f'Bearer {self.token}'})
+                    response = self.fetch_fhir_resource(uri, {'Authorization': f'Bearer {self.token}'})
                 except requests.exceptions.HTTPError:
                     failed_references.append(reference)
 
@@ -126,11 +127,24 @@ class ResourceTestMixin:
                 result = (errors, WARN)
             self.results[f'Resources fulfill the {name} profile'] = result
 
+    def fetcher(self, path):
+        uri = f'{self.base_uri}/{path}'
+        try:
+            response = self.fetch_fhir_resource(uri, {'Authorization': f'Bearer {self.token}'})
+        except requests.exceptions.HTTPError:
+            return False
+        return True
+
+    def test_schema_approach(self):
+        validator = get_s4s_validator(self.fetcher)(schemas.patient)
+        self.results['Errors from schema'] = (json.dumps(list(error.message for error in validator.iter_errors(self.resource))), PASS)
+
     def run(self):
         self.test_valid_fhir_resource()
         self.test_resolvable_references()
         self.test_valid_codes()
         self.test_profiles()
+        self.test_schema_approach()
 
 
 @register

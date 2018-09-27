@@ -1,3 +1,6 @@
+from test_suite import bindings, value_sets
+
+
 patient_argonaut = {
   'properties': {
     'identifier': {
@@ -41,6 +44,93 @@ patient_cms = {
   },
   'required': ['identifier', 'name', 'gender', 'address']
 }
+
+
+patient = {
+    'profiles': {
+        'Argonaut': {'schema': patient_argonaut},
+        'CMS': {'schema': patient_cms}
+    },
+    'properties': {
+        'gender': {
+            'type': 'code',
+            'binding': {
+                'valueSet': value_sets.administrative_gender,
+                'strength': bindings.REQUIRED
+            }
+        },
+        'maritalStatus': {
+            'type': 'codeableConcept',
+            'binding': {
+                'valueSet': value_sets.marital_status,
+                'strength': bindings.REQUIRED
+            }
+        },
+        'contact': {
+            'items': {
+                'properties': {
+                    'relationship': {
+                        'type': 'codeableConcept',
+                        'binding': {
+                            'valueSet': value_sets.patient_contact_relationship,
+                            'strength': bindings.EXTENSIBLE
+                        }
+                    },
+                    'gender': {
+                        'type': 'code',
+                        'binding': {
+                            'valueSet': value_sets.administrative_gender,
+                            'strength': bindings.REQUIRED
+                        }
+                    },
+                    'organization': {
+                        'type': 'reference'
+                    }
+                }
+            }
+        },
+        # omitting animal
+        'communication': {
+            'items': {
+                'properties': {
+                    'language': {
+                        'type': 'codeableConcept',
+                        'binding': {
+                            'valueSet': value_sets.language,
+                            'strength': bindings.REQUIRED
+                        }
+                    }
+                }
+            }
+        },
+        'careProvider': {
+            'items': {
+                'type': 'reference'
+            }
+        },
+        'managingOrganization': {
+            'type': 'reference'
+        },
+        'link': {
+            'items': {
+                'properties': {
+                    'other': {
+                        'type': 'reference'
+                    },
+                    'type': {
+                        'type': 'code',
+                        'binding': {
+                            'valueSet': value_sets.link_type,
+                            'strength': bindings.REQUIRED
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 
 allergies_argonaut = {
     'oneOf': [
